@@ -1,0 +1,148 @@
+#coding=gbk
+import socket
+import time
+import StringIO
+import sys
+  
+  
+class wsgi(object):
+    address_family = socket.AF_INET
+    socket_type = socket.SOCK_STREAM
+    request_queue_size = 20
+
+    def __init__(self, server_address,port):
+        # Create a listening socket
+        self.listen_socket = listen_socket = socket.socket(
+            self.address_family,
+            self.socket_type
+        )
+        # Allow to reuse the same address
+        listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Bind
+        listen_socket.bind((server_address,port))
+        # Activate
+        listen_socket.listen(self.request_queue_size)
+        # Get server host name and port
+        host, port = self.listen_socket.getsockname()[:2]
+        self.server_name = socket.getfqdn(host)
+        self.server_port = port
+        # Return headers set by Web framework/Web application
+        self.headers_set = []
+    
+    def set_app(self, application):
+        self.application = application
+        
+    def serve_forever(self):
+         
+        #监听当前系统
+        socket = self.listen_socket
+        while True:
+
+            #得到用户的连接
+            self.client_connection, client_address = socket.accept()
+                    
+            #连接一个用户后进行操作
+            self.arequest()
+  
+    def arequest(self):
+        #得到需求信息        
+        self.data = data = self.client_connection.recv(1024)[:]
+        print (data)
+
+        #处理需求头信息,返回数据字典 
+        env = self.deal_data(data)
+  
+        #调用函数，给予返回值
+        try:
+            response = self.application(env, self.start_response)
+        except:
+            self.start_response('200 OK', [('Content-type', 'text/html')])
+            response = self.get_response()
+        
+        
+        #结合协议头将数据传回
+        self.finish_response(response)
+        
+    def get_response(self):
+        
+        #根据不同状态给出不同返回值 
+        path1 = self.path[1:]
+        path2 = self.path
+        if path2[-5:] == '.html' :
+            try:
+                response = open(path1).read( )
+            except:
+                self.status = '404 Not Found'
+                response = '404 Not Found'
+                
+        elif path2[-4:] == '.htm' :
+            try:
+                response = open(path1).read( )
+            except:
+                self.status = '404 Not Found'
+                response = '404 Not Found'
+        else :
+            response = 'hello ' + path1
+        return response
+  
+    def deal_data(self, data):
+         
+        #分解字符串，删除分解后的换行符
+        request_line = data.splitlines()[0][:]
+         
+        #将数据拆分为具体属性
+        (self.request_method, self.path,self.request_version) = request_line.split()
+        
+        env = {}
+          # Required WSGI variables
+        env['wsgi.version']      = (1, 0)
+        env['wsgi.url_scheme'] = 'http'
+        env['wsgi.input'] = StringIO.StringIO(self.data)
+        env['wsgi.errors'] = sys.stderr
+        env['wsgi.multithread'] = False
+        env['wsgi.multiprocess'] = False
+        env['wsgi.run_once'] = False
+        #将部分属性存入数据字典
+        env['REQUEST_METHOD']    = self.request_method
+        env['PATH_INFO']         = self.path
+        env['SERVER_NAME']       = self.server_name
+        env['SERVER_PORT']       = self.server_port
+        return env
+  
+    def start_response(self, status, headers, exc_info=None):
+        
+        self.status = status
+        nowtime = time.strftime('%a, %d %b %Y %H:%M:%S GMT', time.localtime())
+        #添加其他头数据
+        headers2 = [('Date', nowtime)]
+        self.headers = headers2 + headers
+    
+    def finish_response(self, response):
+        try:
+            #添加其他数据，形成最后的返回值
+            headers = self.headers
+            status = self.status
+            response2 = 'HTTP/1.1 {status}\r\n'.format(status=status)
+            for header in headers:
+                response2 += '{0}: {1}\r\n'.format(*header)
+            response2 += 'Server: WSGIServer 0.2\r\n\r\n'
+            for data in response:
+                response2 += data
+            self.client_connection.sendall(response2)
+        finally:
+            self.client_connection.close()
+            
+  
+def make_server(HOST, PORT, application):
+    #调用wsgi框架
+    server = wsgi(HOST, PORT)
+    server.set_app(application)
+    return server
+  
+  
+if __name__ == '__main__':
+
+    print"hh"
+    #创建server服务
+    httpd = make_server('', 8888, None)
+    httpd.serve_forever()
